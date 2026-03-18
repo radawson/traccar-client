@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:traccar_client/main.dart';
 import 'package:traccar_client/password_service.dart';
+import 'package:traccar_client/push_service.dart';
 import 'package:traccar_client/preferences.dart';
 import 'package:traccar_client/tracking_service.dart';
 import 'package:traccar_client/tracking_services.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
+    as bg;
 
 import 'l10n/app_localizations.dart';
 import 'status_screen.dart';
@@ -53,23 +55,27 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _checkBatteryOptimizations(BuildContext context) async {
     try {
       if (!await bg.DeviceSettings.isIgnoringBatteryOptimizations) {
-        final request = await bg.DeviceSettings.showIgnoreBatteryOptimizations();
+        final request =
+            await bg.DeviceSettings.showIgnoreBatteryOptimizations();
         if (!request.seen && context.mounted) {
           showDialog(
             context: context,
-            builder: (_) => AlertDialog(
-              scrollable: true,
-              content: Text(AppLocalizations.of(context)!.optimizationMessage),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    bg.DeviceSettings.show(request);
-                  },
-                  child: Text(AppLocalizations.of(context)!.okButton),
+            builder:
+                (_) => AlertDialog(
+                  scrollable: true,
+                  content: Text(
+                    AppLocalizations.of(context)!.optimizationMessage,
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        bg.DeviceSettings.show(request);
+                      },
+                      child: Text(AppLocalizations.of(context)!.okButton),
+                    ),
+                  ],
                 ),
-              ],
-            ),
           );
         }
       }
@@ -93,7 +99,80 @@ class _MainScreenState extends State<MainScreen> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(AppLocalizations.of(context)!.idLabel),
-              subtitle: Text(Preferences.instance.getString(Preferences.id) ?? ''),
+              subtitle: Text(
+                Preferences.instance.getString(Preferences.id) ?? '',
+              ),
+            ),
+            ValueListenableBuilder<CommandDiagnostics>(
+              valueListenable: PushService.diagnostics,
+              builder: (context, diagnostics, _) {
+                final lastCommand =
+                    diagnostics.lastCommandAt == null
+                        ? 'never'
+                        : diagnostics.lastCommandAt!
+                            .toLocal()
+                            .toIso8601String();
+                final reconnectReason = diagnostics.lastReconnectReason ?? '-';
+                final lastError = diagnostics.lastError ?? '-';
+                return Column(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Tracking backend'),
+                      subtitle: Text(TrackingServices.activeTrackingBackend),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Configured mode'),
+                      subtitle: Text(PushService.configuredModeName),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Command transport'),
+                      subtitle: Text(TrackingServices.activeCommandTransport),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('WebSocket'),
+                      subtitle: Text(
+                        diagnostics.websocketEnabled
+                            ? (diagnostics.websocketConfigured
+                                ? (diagnostics.websocketConnected
+                                    ? 'connected'
+                                    : 'disconnected')
+                                : 'not configured')
+                            : 'disabled',
+                      ),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('FCM availability'),
+                      subtitle: Text(
+                        diagnostics.fcmEnabled
+                            ? (diagnostics.fcmAvailable
+                                ? 'available'
+                                : 'unavailable')
+                            : 'disabled',
+                      ),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Last command'),
+                      subtitle: Text(lastCommand),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Reconnect reason'),
+                      subtitle: Text(reconnectReason),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Last command error'),
+                      subtitle: Text(lastError),
+                    ),
+                  ],
+                );
+              },
             ),
             if (Platform.isAndroid) ...[
               Text(
@@ -106,7 +185,10 @@ class _MainScreenState extends State<MainScreen> {
               contentPadding: EdgeInsets.zero,
               title: Text(AppLocalizations.of(context)!.trackingLabel),
               value: trackingEnabled,
-              activeTrackColor: isMoving == false ? Theme.of(context).colorScheme.secondary : null,
+              activeTrackColor:
+                  isMoving == false
+                      ? Theme.of(context).colorScheme.secondary
+                      : null,
               onChanged: (bool value) async {
                 if (await PasswordService.authenticate(context) && mounted) {
                   if (value) {
@@ -117,24 +199,33 @@ class _MainScreenState extends State<MainScreen> {
                         _checkBatteryOptimizations(context);
                       }
                     } on PlatformException catch (error) {
-                        final providerState = await TrackingServices.instance.getProviderState();
-                        final isPermissionError = providerState.status == TrackingAuthorizationStatus.denied ||
-                          providerState.status == TrackingAuthorizationStatus.restricted;
-                        if (!mounted) return;
-                        messengerKey.currentState?.showSnackBar(
-                          SnackBar(
-                            content: Text(error.message ?? error.code),
-                            duration: const Duration(seconds: 4),
-                            action: isPermissionError
-                                ? SnackBarAction(
-                                    label: AppLocalizations.of(context)!.settingsTitle,
-                                    onPressed: () => AppSettings.openAppSettings(
-                                      type: AppSettingsType.settings,
-                                    ),
+                      final providerState =
+                          await TrackingServices.instance.getProviderState();
+                      final isPermissionError =
+                          providerState.status ==
+                              TrackingAuthorizationStatus.denied ||
+                          providerState.status ==
+                              TrackingAuthorizationStatus.restricted;
+                      if (!mounted) return;
+                      messengerKey.currentState?.showSnackBar(
+                        SnackBar(
+                          content: Text(error.message ?? error.code),
+                          duration: const Duration(seconds: 4),
+                          action:
+                              isPermissionError
+                                  ? SnackBarAction(
+                                    label:
+                                        AppLocalizations.of(
+                                          context,
+                                        )!.settingsTitle,
+                                    onPressed:
+                                        () => AppSettings.openAppSettings(
+                                          type: AppSettingsType.settings,
+                                        ),
                                   )
-                                : null,
-                          ),
-                        );
+                                  : null,
+                        ),
+                      );
                     } catch (error) {
                       if (!mounted) return;
                       messengerKey.currentState?.showSnackBar(
@@ -159,9 +250,10 @@ class _MainScreenState extends State<MainScreen> {
                         extras: const {'manual': true},
                       );
                     } catch (error) {
-                      final message = error is PlatformException
-                          ? (error.message ?? error.code)
-                          : error.toString();
+                      final message =
+                          error is PlatformException
+                              ? (error.message ?? error.code)
+                              : error.toString();
                       messengerKey.currentState?.showSnackBar(
                         SnackBar(content: Text(message)),
                       );
@@ -171,7 +263,10 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 FilledButton.tonal(
                   onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StatusScreen()));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const StatusScreen()),
+                    );
                   },
                   child: Text(AppLocalizations.of(context)!.statusButton),
                 ),
@@ -198,7 +293,9 @@ class _MainScreenState extends State<MainScreen> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(AppLocalizations.of(context)!.urlLabel),
-              subtitle: Text(Preferences.instance.getString(Preferences.url) ?? ''),
+              subtitle: Text(
+                Preferences.instance.getString(Preferences.url) ?? '',
+              ),
             ),
             const SizedBox(height: 8),
             OverflowBar(
@@ -206,8 +303,14 @@ class _MainScreenState extends State<MainScreen> {
               children: [
                 FilledButton.tonal(
                   onPressed: () async {
-                    if (await PasswordService.authenticate(context) && mounted) {
-                      await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                    if (await PasswordService.authenticate(context) &&
+                        mounted) {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      );
                       setState(() {});
                     }
                   },
@@ -215,7 +318,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ],
             ),
-          ]
+          ],
         ),
       ),
     );
@@ -224,9 +327,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Traccar Client'),
-      ),
+      appBar: AppBar(title: Text('Traccar Client')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(

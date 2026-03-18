@@ -1,10 +1,14 @@
 import 'preferences.dart';
+import 'push_service.dart';
 import 'tracking_services.dart';
 
 class ConfigurationService {
   static Future<void> applyUri(Uri uri) async {
     if (uri.scheme == 'http' || uri.scheme == 'https') {
-      await Preferences.instance.setString(Preferences.url, '${uri.origin}${uri.path}');
+      await Preferences.instance.setString(
+        Preferences.url,
+        '${uri.origin}${uri.path}',
+      );
     } else {
       final url = uri.queryParameters['url'];
       if (url != null) {
@@ -22,11 +26,19 @@ class ConfigurationService {
     await _applyBoolParameter(parameters, Preferences.buffer);
     await _applyBoolParameter(parameters, Preferences.wakelock);
     await _applyBoolParameter(parameters, Preferences.stopDetection);
+    await _applyStringParameter(parameters, Preferences.websocketUrl);
+    await _applyStringParameter(parameters, Preferences.websocketToken);
+    await _applyBoolParameter(parameters, Preferences.useFcmFallback);
+    await _applyStringParameter(parameters, Preferences.commandTransportMode);
+    await _applyBoolParameter(parameters, Preferences.websocketEnabled);
     await TrackingServices.instance.setConfig();
+    await PushService.init();
   }
 
   static Future<void> _applyStringParameter(
-      Map<String, String> parameters, String key) async {
+    Map<String, String> parameters,
+    String key,
+  ) async {
     final value = parameters[key];
     if (value != null) {
       await Preferences.instance.setString(key, value);
@@ -34,7 +46,9 @@ class ConfigurationService {
   }
 
   static Future<void> _applyIntParameter(
-      Map<String, String> parameters, String key) async {
+    Map<String, String> parameters,
+    String key,
+  ) async {
     final stringValue = parameters[key];
     if (stringValue != null) {
       final value = int.tryParse(stringValue);
@@ -45,7 +59,9 @@ class ConfigurationService {
   }
 
   static Future<void> _applyBoolParameter(
-      Map<String, String> parameters, String key) async {
+    Map<String, String> parameters,
+    String key,
+  ) async {
     final value = parameters[key];
     if (value != null) {
       switch (value) {
