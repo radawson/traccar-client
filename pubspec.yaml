@@ -1,7 +1,7 @@
 name: traccar_client
 description: "Traccar Client"
 publish_to: 'none'
-version: 9.7.15+130
+version: 9.8.0+131
 
 environment:
   sdk: ^3.7.2
@@ -13,6 +13,9 @@ dependencies:
     sdk: flutter
   intl: any
   flutter_background_geolocation: ^5.0.5
+  geolocator: any
+  google_api_availability: any
+  flutter_foreground_task: any
   shared_preferences: ^2.5.4
   firebase_core: ^4.5.0
   firebase_messaging: ^16.1.2

@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 import 'package:traccar_client/main.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/qr_code_screen.dart';
+import 'package:traccar_client/tracking_services.dart';
 import 'package:wakelock_partial_android/wakelock_partial_android.dart';
 
 import 'l10n/app_localizations.dart';
@@ -80,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } else {
         await Preferences.instance.setString(key, result);
       }
-      await bg.BackgroundGeolocation.setConfig(Preferences.geolocationConfig());
+      await TrackingServices.instance.setConfig();
       setState(() {});
     }
   }
@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
         if (selectedAccuracy != null) {
           await Preferences.instance.setString(Preferences.accuracy, selectedAccuracy);
-          await bg.BackgroundGeolocation.setConfig(Preferences.geolocationConfig());
+          await TrackingServices.instance.setConfig();
           setState(() {});
         }
       },
@@ -200,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: Preferences.instance.getBool(Preferences.buffer) ?? true,
               onChanged: (value) async {
                 await Preferences.instance.setBool(Preferences.buffer, value);
-                await bg.BackgroundGeolocation.setConfig(Preferences.geolocationConfig());
+                await TrackingServices.instance.setConfig();
                 setState(() {});
               },
             ),
@@ -211,8 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (value) async {
                 await Preferences.instance.setBool(Preferences.wakelock, value);
                 if (value) {
-                  final state = await bg.BackgroundGeolocation.state;
-                  if (state.isMoving == true) {
+                  final state = await TrackingServices.instance.getState();
+                  if (state.isMoving) {
                     WakelockPartialAndroid.acquire();
                   }
                 } else {
@@ -227,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: Preferences.instance.getBool(Preferences.stopDetection) ?? true,
               onChanged: (value) async {
                 await Preferences.instance.setBool(Preferences.stopDetection, value);
-                await bg.BackgroundGeolocation.setConfig(Preferences.geolocationConfig());
+                await TrackingServices.instance.setConfig();
                 setState(() {});
               },
             ),

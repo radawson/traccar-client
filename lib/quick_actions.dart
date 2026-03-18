@@ -4,7 +4,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:quick_actions/quick_actions.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
+import 'package:traccar_client/tracking_services.dart';
 
 import 'l10n/app_localizations.dart';
 
@@ -25,12 +25,14 @@ class _QuickActionsInitializerState extends State<QuickActionsInitializer> {
       FirebaseCrashlytics.instance.log('quick_action: $shortcutType');
       switch (shortcutType) {
         case 'start':
-          await bg.BackgroundGeolocation.start();
+          await TrackingServices.instance.start();
         case 'stop':
-          await bg.BackgroundGeolocation.stop();
+          await TrackingServices.instance.stop();
         case 'sos':
           try {
-            await bg.BackgroundGeolocation.getCurrentPosition(samples: 1, persist: true, extras: {'alarm': 'sos'});
+            await TrackingServices.instance.getCurrentPosition(
+              extras: const {'alarm': 'sos'},
+            );
           } catch (error) {
             developer.log('Failed to send alert', error: error);
           }

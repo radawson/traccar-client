@@ -1,6 +1,5 @@
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
-
 import 'preferences.dart';
+import 'tracking_services.dart';
 
 class ConfigurationService {
   static Future<void> applyUri(Uri uri) async {
@@ -23,7 +22,7 @@ class ConfigurationService {
     await _applyBoolParameter(parameters, Preferences.buffer);
     await _applyBoolParameter(parameters, Preferences.wakelock);
     await _applyBoolParameter(parameters, Preferences.stopDetection);
-    await bg.BackgroundGeolocation.setConfig(Preferences.geolocationConfig());
+    await TrackingServices.instance.setConfig();
   }
 
   static Future<void> _applyStringParameter(

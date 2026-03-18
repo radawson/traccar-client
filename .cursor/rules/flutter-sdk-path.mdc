@@ -1,0 +1,12 @@
+---
+description: Use project Flutter SDK path for commands
+alwaysApply: true
+---
+
+# Flutter SDK Path
+
+- For any `flutter` or `dart` command, prepend PATH with:
+  - `/home/torvaldsl/develop/flutter/bin`
+- Use this pattern:
+  - `export PATH="/home/torvaldsl/develop/flutter/bin:$PATH" && flutter <command>`
+- If a Flutter command fails with `command not found`, retry once with the PATH export above.

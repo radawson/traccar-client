@@ -1,12 +1,12 @@
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 import 'package:traccar_client/preferences.dart';
+import 'package:traccar_client/tracking_service.dart';
 
-class Location {
+class CachedLocation {
   final String timestamp;
   final double latitude;
   final double longitude;
   final double heading;
-  const Location({
+  const CachedLocation({
     required this.timestamp,
     required this.latitude,
     required this.longitude,
@@ -15,16 +15,16 @@ class Location {
 }
 
 class LocationCache {
-  static Location? _last;
+  static CachedLocation? _last;
 
-  static Location? get() {
+  static CachedLocation? get() {
     if (_last == null) {
       final timestamp = Preferences.instance.getString(Preferences.lastTimestamp);
       final latitude = Preferences.instance.getDouble(Preferences.lastLatitude);
       final longitude = Preferences.instance.getDouble(Preferences.lastLongitude);
       final heading = Preferences.instance.getDouble(Preferences.lastHeading);
       if (timestamp != null && latitude != null && longitude != null && heading != null) {
-        _last = Location(
+        _last = CachedLocation(
           timestamp: timestamp,
           latitude: latitude,
           longitude: longitude,
@@ -35,12 +35,12 @@ class LocationCache {
     return _last;
   }
 
-  static Future<void> set(bg.Location location) async {
-    final last = Location(
+  static Future<void> set(TrackingLocation location) async {
+    final last = CachedLocation(
       timestamp: location.timestamp,
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      heading: location.coords.heading,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      heading: location.heading,
     );
     Preferences.instance.setString(Preferences.lastTimestamp, last.timestamp);
     Preferences.instance.setDouble(Preferences.lastLatitude, last.latitude);

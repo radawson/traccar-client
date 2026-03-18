@@ -6,10 +6,10 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'package:rate_my_app/rate_my_app.dart';
-import 'package:traccar_client/geolocation_service.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/push_service.dart';
 import 'package:traccar_client/quick_actions.dart';
+import 'package:traccar_client/tracking_services.dart';
 
 import 'l10n/app_localizations.dart';
 import 'main_screen.dart';
@@ -20,12 +20,20 @@ final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  try {
+    await Firebase.initializeApp();
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  } catch (error) {
+    developer.log('Firebase initialization failed', error: error);
+  }
   await Preferences.init();
   await PasswordService.migrate();
-  await GeolocationService.init();
-  await PushService.init();
+  await TrackingServices.initialize();
+  try {
+    await PushService.init();
+  } catch (error) {
+    developer.log('Push service initialization failed', error: error);
+  }
   runApp(const MainApp());
 }
 

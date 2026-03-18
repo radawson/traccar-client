@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:traccar_client/main.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/preferences.dart';
+import 'package:traccar_client/tracking_service.dart';
+import 'package:traccar_client/tracking_services.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 
@@ -31,17 +33,17 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _initState() async {
-    final state = await bg.BackgroundGeolocation.state;
+    final state = await TrackingServices.instance.getState();
     setState(() {
       trackingEnabled = state.enabled;
       isMoving = state.isMoving;
     });
-    bg.BackgroundGeolocation.onEnabledChange((bool enabled) {
+    TrackingServices.instance.onEnabledChange((bool enabled) {
       setState(() {
         trackingEnabled = enabled;
       });
     });
-    bg.BackgroundGeolocation.onMotionChange((bg.Location location) {
+    TrackingServices.instance.onMotionChange((TrackingLocation location) {
       setState(() {
         isMoving = location.isMoving;
       });
@@ -110,14 +112,14 @@ class _MainScreenState extends State<MainScreen> {
                   if (value) {
                     try {
                       FirebaseCrashlytics.instance.log('tracking_toggle_start');
-                      await bg.BackgroundGeolocation.start();
-                      if (mounted) {
+                      await TrackingServices.instance.start();
+                      if (mounted && !TrackingServices.instance.isFallback) {
                         _checkBatteryOptimizations(context);
                       }
                     } on PlatformException catch (error) {
-                        final providerState = await bg.BackgroundGeolocation.providerState;
-                        final isPermissionError = providerState.status == bg.ProviderChangeEvent.AUTHORIZATION_STATUS_DENIED ||
-                          providerState.status == bg.ProviderChangeEvent.AUTHORIZATION_STATUS_RESTRICTED;
+                        final providerState = await TrackingServices.instance.getProviderState();
+                        final isPermissionError = providerState.status == TrackingAuthorizationStatus.denied ||
+                          providerState.status == TrackingAuthorizationStatus.restricted;
                         if (!mounted) return;
                         messengerKey.currentState?.showSnackBar(
                           SnackBar(
@@ -133,10 +135,15 @@ class _MainScreenState extends State<MainScreen> {
                                 : null,
                           ),
                         );
+                    } catch (error) {
+                      if (!mounted) return;
+                      messengerKey.currentState?.showSnackBar(
+                        SnackBar(content: Text(error.toString())),
+                      );
                     }
                   } else {
                     FirebaseCrashlytics.instance.log('tracking_toggle_stop');
-                    bg.BackgroundGeolocation.stop();
+                    await TrackingServices.instance.stop();
                   }
                 }
               },
@@ -148,9 +155,16 @@ class _MainScreenState extends State<MainScreen> {
                 FilledButton.tonal(
                   onPressed: () async {
                     try {
-                      await bg.BackgroundGeolocation.getCurrentPosition(samples: 1, persist: true, extras: {'manual': true});
-                    } on PlatformException catch (error) {
-                      messengerKey.currentState?.showSnackBar(SnackBar(content: Text(error.message ?? error.code)));
+                      await TrackingServices.instance.getCurrentPosition(
+                        extras: const {'manual': true},
+                      );
+                    } catch (error) {
+                      final message = error is PlatformException
+                          ? (error.message ?? error.code)
+                          : error.toString();
+                      messengerKey.currentState?.showSnackBar(
+                        SnackBar(content: Text(message)),
+                      );
                     }
                   },
                   child: Text(AppLocalizations.of(context)!.locationButton),
