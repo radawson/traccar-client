@@ -16,7 +16,23 @@ val backgroundGeolocation = project(":flutter_background_geolocation")
 apply { from("${backgroundGeolocation.projectDir}/background_geolocation.gradle") }
 
 val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("../../environment/key.properties")
+val localKeystorePropertiesFile = rootProject.file("key.properties")
+val legacyKeystorePropertiesFile = rootProject.file("../../environment/key.properties")
+val keystorePropertiesFile = when {
+    localKeystorePropertiesFile.exists() -> localKeystorePropertiesFile
+    legacyKeystorePropertiesFile.exists() -> legacyKeystorePropertiesFile
+    else -> localKeystorePropertiesFile
+}
+
+fun resolveStoreFile(path: String): File {
+    val expandedPath = if (path.startsWith("~/")) {
+        System.getProperty("user.home") + path.removePrefix("~")
+    } else {
+        path
+    }
+    return file(expandedPath)
+}
+
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
@@ -48,10 +64,10 @@ android {
     signingConfigs {
         if (keystorePropertiesFile.exists()) {
             create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"].toString()
+                keyPassword = keystoreProperties["keyPassword"].toString()
+                storeFile = keystoreProperties["storeFile"]?.toString()?.let { resolveStoreFile(it) }
+                storePassword = keystoreProperties["storePassword"].toString()
             }
         }
     }
