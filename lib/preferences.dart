@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart' as bg;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_android/shared_preferences_android.dart';
+import 'package:uuid/uuid.dart';
 
 class Preferences {
   static Future<void>? _initFuture;
@@ -46,7 +46,7 @@ class Preferences {
       ),
     );
     if (instance.getString(id) == null) {
-      await instance.setString(id, (Random().nextInt(90000000) + 10000000).toString());
+      await instance.setString(id, const Uuid().v4());
       await instance.setString(url, 'http://demo.traccar.org:5055');
       await instance.setString(accuracy, 'medium');
       await instance.setInt(interval, 300);
