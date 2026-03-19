@@ -115,6 +115,22 @@ Validate all scenarios before release:
    - In `Auto` mode verify Firebase commands are primary.
    - Disable or break Firebase path and verify automatic fallback to WebSocket.
 
+## Android 15 Preflight Checklist
+
+Before enabling tracking on GrapheneOS 15 / Android 15, confirm:
+
+- Location services are enabled.
+- Location permission is granted as `Allow all the time`.
+- Notification permission is granted (recommended for command visibility).
+- Battery optimization is disabled for the app when long-running reliability is required.
+
+What the app does now:
+
+- Runs a unified Android preflight before manual tracking start.
+- Logs `android_preflight_result` with a permissions/device-state matrix.
+- Blocks tracking start when required location prerequisites are missing.
+- Emits user-visible warning when notification or battery settings reduce reliability.
+
 ## Troubleshooting
 
 - If signing is not applied, check that `android/key.properties` exists and all values are correct.

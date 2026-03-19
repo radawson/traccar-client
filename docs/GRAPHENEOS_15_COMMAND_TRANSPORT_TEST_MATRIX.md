@@ -81,6 +81,25 @@ Promote WebSocket primary rollout only after all gates pass:
 4. Zero crash regressions attributable to command transport.
 5. GrapheneOS no-Play profile verified to run commands via WebSocket without FCM.
 
+## Execution Log Template
+
+Use this table to record each on-device run:
+
+| Date | Device/Profile | Scenario | Result (Pass/Fail) | Evidence (logs/screenshots) | Notes |
+|---|---|---|---|---|---|
+| YYYY-MM-DD | GrapheneOS 15 + Play | WebSocket connected, fallback enabled |  |  |  |
+| YYYY-MM-DD | GrapheneOS 15 + Play | WebSocket unavailable, FCM fallback |  |  |  |
+| YYYY-MM-DD | GrapheneOS 15 no-Play | WebSocket connected |  |  |  |
+| YYYY-MM-DD | GrapheneOS 15 no-Play | WebSocket unavailable |  |  |  |
+| YYYY-MM-DD | GrapheneOS 15 no-Play | Permission downgrade + notification denied |  |  |  |
+
+Expected diagnostic evidence per run:
+
+- `android_preflight_result`
+- `tracking_backend_selected` and/or `tracking_backend_fallback_promoted`
+- `command_transport_notice` (when limitations are present)
+- command lifecycle events (`command_received`, `command_execute_start`, `command_execute_success`/`command_execute_failed`, `command_ack_sent`/`command_nack_sent`)
+
 ## Dependency Maintenance Scope
 
 - `npm audit` findings are tracked separately from this matrix and should not block transport-behavior validation unless they directly affect runtime behavior under test.

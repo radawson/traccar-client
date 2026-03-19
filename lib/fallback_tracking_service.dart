@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
+    as bg;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart' as fft;
 import 'package:geolocator/geolocator.dart';
 
@@ -9,6 +12,155 @@ import 'location_cache.dart';
 import 'preferences.dart';
 import 'tracking_service.dart';
 import 'transport_log_service.dart';
+
+class AndroidPreflightReport {
+  final bool locationServicesEnabled;
+  final LocationPermission locationPermission;
+  final bool hasForegroundLocation;
+  final bool hasBackgroundLocation;
+  final bool notificationsGranted;
+  final String notificationStatus;
+  final bool batteryOptimizationIgnored;
+  final bool batteryOptimizationKnown;
+  final List<String> blockingIssues;
+  final List<String> warnings;
+
+  const AndroidPreflightReport({
+    required this.locationServicesEnabled,
+    required this.locationPermission,
+    required this.hasForegroundLocation,
+    required this.hasBackgroundLocation,
+    required this.notificationsGranted,
+    required this.notificationStatus,
+    required this.batteryOptimizationIgnored,
+    required this.batteryOptimizationKnown,
+    required this.blockingIssues,
+    required this.warnings,
+  });
+
+  bool get canStartTracking => blockingIssues.isEmpty;
+
+  String get primaryMessage =>
+      canStartTracking
+          ? (warnings.isNotEmpty ? warnings.first : 'Ready for tracking.')
+          : blockingIssues.first;
+
+  Map<String, Object?> toLogContext() {
+    return {
+      'locationServicesEnabled': locationServicesEnabled,
+      'locationPermission': locationPermission.name,
+      'hasForegroundLocation': hasForegroundLocation,
+      'hasBackgroundLocation': hasBackgroundLocation,
+      'notificationsGranted': notificationsGranted,
+      'notificationStatus': notificationStatus,
+      'batteryOptimizationIgnored': batteryOptimizationIgnored,
+      'batteryOptimizationKnown': batteryOptimizationKnown,
+      'blockingIssues': blockingIssues,
+      'warnings': warnings,
+    };
+  }
+}
+
+class AndroidTrackingPreflight {
+  static Future<AndroidPreflightReport> run({
+    bool requestPermissions = false,
+  }) async {
+    final blockingIssues = <String>[];
+    final warnings = <String>[];
+
+    final locationServicesEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!locationServicesEnabled) {
+      blockingIssues.add('Location services are disabled.');
+    }
+
+    var locationPermission = await Geolocator.checkPermission();
+    if (requestPermissions && locationPermission == LocationPermission.denied) {
+      locationPermission = await Geolocator.requestPermission();
+    }
+    if (requestPermissions &&
+        Platform.isAndroid &&
+        locationPermission == LocationPermission.whileInUse) {
+      locationPermission = await Geolocator.requestPermission();
+    }
+
+    final hasForegroundLocation =
+        locationPermission == LocationPermission.whileInUse ||
+        locationPermission == LocationPermission.always;
+    final hasBackgroundLocation =
+        !Platform.isAndroid || locationPermission == LocationPermission.always;
+
+    if (!hasForegroundLocation) {
+      blockingIssues.add('Foreground location permission is required.');
+    }
+    if (Platform.isAndroid && !hasBackgroundLocation) {
+      blockingIssues.add(
+        'Background location must be "Allow all the time" on Android 15.',
+      );
+    }
+
+    var notificationsGranted = true;
+    var notificationStatus = 'unknown';
+    try {
+      var notificationSettings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      if (requestPermissions &&
+          notificationSettings.authorizationStatus ==
+              AuthorizationStatus.notDetermined) {
+        notificationSettings = await FirebaseMessaging.instance
+            .requestPermission(alert: true, badge: true, sound: true);
+      }
+      notificationStatus = notificationSettings.authorizationStatus.name;
+      notificationsGranted =
+          notificationSettings.authorizationStatus ==
+              AuthorizationStatus.authorized ||
+          notificationSettings.authorizationStatus ==
+              AuthorizationStatus.provisional;
+    } catch (_) {
+      notificationsGranted = false;
+      notificationStatus = 'unavailable';
+    }
+    if (!notificationsGranted) {
+      warnings.add(
+        'Notifications are denied or unavailable; background command delivery may be limited.',
+      );
+    }
+
+    var batteryOptimizationIgnored = true;
+    var batteryOptimizationKnown = false;
+    try {
+      batteryOptimizationIgnored =
+          await bg.DeviceSettings.isIgnoringBatteryOptimizations;
+      batteryOptimizationKnown = true;
+    } catch (_) {
+      batteryOptimizationIgnored = false;
+      batteryOptimizationKnown = false;
+    }
+    if (batteryOptimizationKnown && !batteryOptimizationIgnored) {
+      warnings.add(
+        'Battery optimization is enabled and can reduce background reliability.',
+      );
+    }
+
+    final report = AndroidPreflightReport(
+      locationServicesEnabled: locationServicesEnabled,
+      locationPermission: locationPermission,
+      hasForegroundLocation: hasForegroundLocation,
+      hasBackgroundLocation: hasBackgroundLocation,
+      notificationsGranted: notificationsGranted,
+      notificationStatus: notificationStatus,
+      batteryOptimizationIgnored: batteryOptimizationIgnored,
+      batteryOptimizationKnown: batteryOptimizationKnown,
+      blockingIssues: List.unmodifiable(blockingIssues),
+      warnings: List.unmodifiable(warnings),
+    );
+
+    TransportLogService.event(
+      'android_preflight_result',
+      context: report.toLogContext(),
+    );
+    return report;
+  }
+}
 
 class FallbackTrackingService implements TrackingService {
   final List<EnabledChangeCallback> _enabledCallbacks = [];
@@ -245,13 +397,9 @@ class FallbackTrackingService implements TrackingService {
   }
 
   Future<void> _ensurePermission() async {
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      throw Exception('Location permission denied');
+    final report = await AndroidTrackingPreflight.run(requestPermissions: true);
+    if (!report.canStartTracking) {
+      throw Exception(report.primaryMessage);
     }
   }
 

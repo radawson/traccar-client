@@ -7,12 +7,14 @@ import 'package:traccar_client/main.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/push_service.dart';
 import 'package:traccar_client/preferences.dart';
+import 'package:traccar_client/transport_log_service.dart';
 import 'package:traccar_client/tracking_service.dart';
 import 'package:traccar_client/tracking_services.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
 
+import 'fallback_tracking_service.dart';
 import 'l10n/app_localizations.dart';
 import 'settings_screen.dart';
 
@@ -83,6 +85,42 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Future<bool> _runAndroidPreflightBeforeStart() async {
+    if (!Platform.isAndroid) return true;
+    final report = await AndroidTrackingPreflight.run(requestPermissions: true);
+    if (!mounted) return report.canStartTracking;
+
+    if (!report.canStartTracking) {
+      TransportLogService.event(
+        'android_preflight_blocked_start',
+        context: report.toLogContext(),
+      );
+      messengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(report.primaryMessage),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: AppLocalizations.of(context)!.settingsTitle,
+            onPressed:
+                () =>
+                    AppSettings.openAppSettings(type: AppSettingsType.settings),
+          ),
+        ),
+      );
+      return false;
+    }
+
+    if (report.warnings.isNotEmpty) {
+      messengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(report.primaryMessage),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+    return true;
+  }
+
   Widget _buildTrackingCard() {
     return Card(
       child: Padding(
@@ -113,6 +151,7 @@ class _MainScreenState extends State<MainScreen> {
                             .toIso8601String();
                 final reconnectReason = diagnostics.lastReconnectReason ?? '-';
                 final lastError = diagnostics.lastError ?? '-';
+                final transportInfo = PushService.availabilityMessage;
                 return Column(
                   children: [
                     ListTile(
@@ -169,6 +208,12 @@ class _MainScreenState extends State<MainScreen> {
                       title: const Text('Last command error'),
                       subtitle: Text(lastError),
                     ),
+                    if (transportInfo != null)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Transport notice'),
+                        subtitle: Text(transportInfo),
+                      ),
                   ],
                 );
               },
@@ -192,6 +237,11 @@ class _MainScreenState extends State<MainScreen> {
                 if (await PasswordService.authenticate(context) && mounted) {
                   if (value) {
                     try {
+                      final preflightReady =
+                          await _runAndroidPreflightBeforeStart();
+                      if (!preflightReady) {
+                        return;
+                      }
                       FirebaseCrashlytics.instance.log('tracking_toggle_start');
                       await TrackingServices.instance.start();
                       if (mounted && !TrackingServices.instance.isFallback) {

@@ -129,6 +129,32 @@ class PushService {
     CommandTransportMode.disabled => Preferences.commandTransportDisabled,
   };
 
+  static String? get availabilityMessage {
+    final state = diagnostics.value;
+    if (_mode == CommandTransportMode.disabled) {
+      return 'Remote commands are disabled by transport mode.';
+    }
+    if (_mode == CommandTransportMode.fcmOnly &&
+        Platform.isAndroid &&
+        !TrackingServices.playServicesAvailable) {
+      return 'FCM-only mode requires Play Services on Android; no command transport is currently available.';
+    }
+    if (state.activeTransport == CommandTransportType.none) {
+      if (Platform.isAndroid && !TrackingServices.playServicesAvailable) {
+        return 'Play Services are unavailable. Configure WebSocket to keep remote commands working on GrapheneOS no-Play profiles.';
+      }
+      if (!state.websocketConfigured && !state.fcmAvailable) {
+        return 'No command transport is available. Configure WebSocket URL or enable FCM fallback.';
+      }
+    }
+    if (state.activeTransport == CommandTransportType.websocket &&
+        Platform.isAndroid &&
+        !TrackingServices.playServicesAvailable) {
+      return 'Running in WebSocket command mode because Play Services are unavailable.';
+    }
+    return null;
+  }
+
   static Future<void> init() async {
     await dispose();
 
@@ -181,6 +207,14 @@ class PushService {
         }
       } else {
         _recordReconnectReason('play_services_unavailable_for_fcm');
+        TransportLogService.event(
+          'command_transport_fcm_unavailable',
+          context: {
+            'mode': configuredModeName,
+            'playServicesAvailable': TrackingServices.playServicesAvailable,
+            'websocketConfigured': wsConfigured,
+          },
+        );
       }
     }
     _applyTransportSelection('init_complete');
@@ -254,6 +288,7 @@ class PushService {
     };
     _setTransport(selected);
     _recordReconnectReason('selection_$reason');
+    _emitAvailabilityDiagnostics(reason);
   }
 
   static void onWebSocketStateChanged({
@@ -291,6 +326,21 @@ class PushService {
     final message = error.toString();
     diagnostics.value = diagnostics.value.copyWith(lastError: message);
     TransportLogService.error('command_error', error);
+  }
+
+  static void _emitAvailabilityDiagnostics(String reason) {
+    final message = availabilityMessage;
+    if (message != null) {
+      TransportLogService.event(
+        'command_transport_notice',
+        context: {
+          'reason': reason,
+          'message': message,
+          'mode': configuredModeName,
+          'activeTransport': activeTransportName ?? 'none',
+        },
+      );
+    }
   }
 
   static Future<void> _executeCommand(RemoteCommand command) async {
