@@ -1,9 +1,7 @@
-import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
 import 'package:wakelock_partial_android/wakelock_partial_android.dart';
@@ -11,6 +9,7 @@ import 'package:wakelock_partial_android/wakelock_partial_android.dart';
 import 'location_cache.dart';
 import 'preferences.dart';
 import 'tracking_service.dart';
+import 'transport_log_service.dart';
 
 class PluginTrackingService implements TrackingService {
   final List<EnabledChangeCallback> _enabledCallbacks = [];
@@ -28,18 +27,15 @@ class PluginTrackingService implements TrackingService {
     if (Platform.isAndroid) {
       await bg.BackgroundGeolocation.registerHeadlessTask(pluginHeadlessTask);
     }
-    try {
-      FirebaseCrashlytics.instance.log('geolocation_init');
-    } catch (_) {}
+    TransportLogService.event('geolocation_init');
     bg.BackgroundGeolocation.onEnabledChange(onEnabledChangeInternal);
     bg.BackgroundGeolocation.onMotionChange(onMotionChangeInternal);
     bg.BackgroundGeolocation.onHeartbeat(onHeartbeatInternal);
-    bg.BackgroundGeolocation.onLocation(
-      onLocationInternal,
-      (bg.LocationError error) {
-        developer.log('Location error', error: error);
-      },
-    );
+    bg.BackgroundGeolocation.onLocation(onLocationInternal, (
+      bg.LocationError error,
+    ) {
+      TransportLogService.error('geolocation_location_error', error);
+    });
   }
 
   @override
@@ -92,9 +88,10 @@ class PluginTrackingService implements TrackingService {
   }
 
   Future<void> onEnabledChangeInternal(bool enabled) async {
-    try {
-      FirebaseCrashlytics.instance.log('geolocation_enabled:$enabled');
-    } catch (_) {}
+    TransportLogService.event(
+      'geolocation_enabled_change',
+      context: {'enabled': enabled},
+    );
     if (Preferences.instance.getBool(Preferences.wakelock) ?? false) {
       if (!enabled) {
         await WakelockPartialAndroid.release();
@@ -106,9 +103,10 @@ class PluginTrackingService implements TrackingService {
   }
 
   Future<void> onMotionChangeInternal(bg.Location location) async {
-    try {
-      FirebaseCrashlytics.instance.log('geolocation_motion:${location.isMoving}');
-    } catch (_) {}
+    TransportLogService.event(
+      'geolocation_motion_change',
+      context: {'isMoving': location.isMoving},
+    );
     if (Preferences.instance.getBool(Preferences.wakelock) ?? false) {
       if (location.isMoving) {
         await WakelockPartialAndroid.acquire();
@@ -136,14 +134,18 @@ class PluginTrackingService implements TrackingService {
       try {
         await bg.BackgroundGeolocation.destroyLocation(location.uuid);
       } catch (error) {
-        developer.log('Failed to delete location', error: error);
+        TransportLogService.error(
+          'geolocation_destroy_location_failed',
+          error,
+          context: {'locationUuid': location.uuid},
+        );
       }
     } else {
       await LocationCache.set(trackingLocation);
       try {
         await bg.BackgroundGeolocation.sync();
       } catch (error) {
-        developer.log('Failed to send location', error: error);
+        TransportLogService.error('geolocation_sync_failed', error);
       }
     }
   }
@@ -182,23 +184,27 @@ class PluginTrackingService implements TrackingService {
 
     final isHighestAccuracy =
         Preferences.instance.getString(Preferences.accuracy) == 'highest';
-    final duration = DateTime.parse(location.timestamp)
-        .difference(DateTime.parse(lastLocation.timestamp))
-        .inSeconds;
+    final duration =
+        DateTime.parse(
+          location.timestamp,
+        ).difference(DateTime.parse(lastLocation.timestamp)).inSeconds;
 
     if (!isHighestAccuracy) {
-      final fastestInterval =
-          Preferences.instance.getInt(Preferences.fastestInterval);
+      final fastestInterval = Preferences.instance.getInt(
+        Preferences.fastestInterval,
+      );
       if (fastestInterval != null && duration < fastestInterval) return true;
     }
 
     final distance = _distance(lastLocation, location);
 
-    final distanceFilter = Preferences.instance.getInt(Preferences.distance) ?? 0;
+    final distanceFilter =
+        Preferences.instance.getInt(Preferences.distance) ?? 0;
     if (distanceFilter > 0 && distance >= distanceFilter) return false;
 
     if (distanceFilter == 0 || isHighestAccuracy) {
-      final intervalFilter = Preferences.instance.getInt(Preferences.interval) ?? 0;
+      final intervalFilter =
+          Preferences.instance.getInt(Preferences.interval) ?? 0;
       if (intervalFilter > 0 && duration >= intervalFilter) return false;
     }
 
@@ -219,7 +225,8 @@ class PluginTrackingService implements TrackingService {
     final dLon = _degToRad(to.longitude - from.longitude);
     final sinLat = sin(dLat / 2);
     final sinLon = sin(dLon / 2);
-    final a = sinLat * sinLat +
+    final a =
+        sinLat * sinLat +
         cos(_degToRad(from.latitude)) *
             cos(_degToRad(to.latitude)) *
             sinLon *
@@ -238,9 +245,10 @@ void pluginHeadlessTask(bg.HeadlessEvent headlessEvent) async {
   await (_firebaseInitialization ??= Firebase.initializeApp());
   await Preferences.init();
   final service = PluginTrackingService();
-  try {
-    FirebaseCrashlytics.instance.log('geolocation_headless:${headlessEvent.name}');
-  } catch (_) {}
+  TransportLogService.event(
+    'geolocation_headless_event',
+    context: {'event': headlessEvent.name},
+  );
   switch (headlessEvent.name) {
     case bg.Event.ENABLEDCHANGE:
       await service.onEnabledChangeInternal(headlessEvent.event);

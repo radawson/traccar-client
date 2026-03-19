@@ -19,6 +19,13 @@ This matrix validates WebSocket-primary command transport with optional FCM fall
 | WebSocket reconnect after network loss       | Yes             | Yes                | reconnect reason logged, transport returns to `websocket`    |
 | Duplicate `commandId` replay                 | Yes             | Yes                | command executed once, duplicate acknowledged                |
 
+For each command scenario, verify correlated diagnostic sequence using the same `commandId`:
+
+- `command_received`
+- `command_execute_start`
+- one of `command_execute_success` or `command_execute_failed`
+- one of `command_ack_sent` or `command_nack_sent`
+
 ## iOS Scenarios
 
 | Scenario | Expected |
@@ -54,6 +61,16 @@ Expected result:
 - Tracking start failures are surfaced clearly to user.
 - Command transport state remains visible even when command execution fails.
 
+## Troubleshooting Checklist
+
+When a scenario fails:
+
+1. Confirm websocket session/auth state is healthy.
+2. Locate `command_received` and ensure `commandId` is present.
+3. Trace lifecycle events for the same `commandId` through execute and ack/nack.
+4. If `command_execute_failed` appears, capture `error` and validate permissions/policy state.
+5. If websocket command events are missing, test fallback path behavior according to configured mode.
+
 ## Rollout Gates
 
 Promote WebSocket primary rollout only after all gates pass:
@@ -63,4 +80,8 @@ Promote WebSocket primary rollout only after all gates pass:
 3. No regression in HTTPS location upload reliability.
 4. Zero crash regressions attributable to command transport.
 5. GrapheneOS no-Play profile verified to run commands via WebSocket without FCM.
+
+## Dependency Maintenance Scope
+
+- `npm audit` findings are tracked separately from this matrix and should not block transport-behavior validation unless they directly affect runtime behavior under test.
 

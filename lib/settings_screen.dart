@@ -6,6 +6,7 @@ import 'package:traccar_client/main.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/push_service.dart';
 import 'package:traccar_client/qr_code_screen.dart';
+import 'package:traccar_client/status_screen.dart';
 import 'package:traccar_client/tracking_services.dart';
 import 'package:wakelock_partial_android/wakelock_partial_android.dart';
 
@@ -381,6 +382,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     duration: const Duration(seconds: 5),
                   ),
+                );
+              },
+            ),
+          if (advanced)
+            ListTile(
+              title: Text(AppLocalizations.of(context)!.statusButton),
+              trailing: const Icon(Icons.article_outlined),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const StatusScreen()),
                 );
               },
             ),

@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart' as fft;
 import 'package:geolocator/geolocator.dart';
 
 import 'location_cache.dart';
 import 'preferences.dart';
 import 'tracking_service.dart';
+import 'transport_log_service.dart';
 
 class FallbackTrackingService implements TrackingService {
   final List<EnabledChangeCallback> _enabledCallbacks = [];
@@ -32,9 +31,7 @@ class FallbackTrackingService implements TrackingService {
     if (Platform.isAndroid) {
       _initializeForegroundTask();
     }
-    try {
-      FirebaseCrashlytics.instance.log('fallback_geolocation_init');
-    } catch (_) {}
+    TransportLogService.event('fallback_geolocation_init');
   }
 
   @override
@@ -46,6 +43,7 @@ class FallbackTrackingService implements TrackingService {
     await _startPositionStream();
     _startHeartbeat();
     _enabled = true;
+    TransportLogService.event('fallback_geolocation_start');
     _notifyEnabled(true);
   }
 
@@ -59,6 +57,7 @@ class FallbackTrackingService implements TrackingService {
       await fft.FlutterForegroundTask.stopService();
     }
     _enabled = false;
+    TransportLogService.event('fallback_geolocation_stop');
     _notifyEnabled(false);
   }
 
@@ -150,7 +149,8 @@ class FallbackTrackingService implements TrackingService {
     if (!Platform.isAndroid) {
       return LocationSettings(accuracy: _desiredAccuracy());
     }
-    final intervalMs = (Preferences.instance.getInt(Preferences.interval) ?? 30) * 1000;
+    final intervalMs =
+        (Preferences.instance.getInt(Preferences.interval) ?? 30) * 1000;
     return AndroidSettings(
       accuracy: _desiredAccuracy(),
       distanceFilter: Preferences.instance.getInt(Preferences.distance) ?? 0,
@@ -202,7 +202,7 @@ class FallbackTrackingService implements TrackingService {
         await _sendLocation(location);
         _buffer.remove(location);
       } catch (error) {
-        developer.log('Failed to send fallback location', error: error);
+        TransportLogService.error('fallback_location_send_failed', error);
         break;
       }
     }
@@ -216,19 +216,21 @@ class FallbackTrackingService implements TrackingService {
     }
     final request = await HttpClient().postUrl(Uri.parse(url));
     request.headers.contentType = ContentType.json;
-    request.write(jsonEncode({
-      'device_id': id,
-      'timestamp': location.timestamp,
-      'coords': {
-        'latitude': location.latitude,
-        'longitude': location.longitude,
-        'heading': location.heading,
-      },
-      'is_moving': true,
-      'extras': location.extras ?? {},
-      '_':
-          '&id=$id&lat=${location.latitude}&lon=${location.longitude}&timestamp=${Uri.encodeComponent(location.timestamp)}&',
-    }));
+    request.write(
+      jsonEncode({
+        'device_id': id,
+        'timestamp': location.timestamp,
+        'coords': {
+          'latitude': location.latitude,
+          'longitude': location.longitude,
+          'heading': location.heading,
+        },
+        'is_moving': true,
+        'extras': location.extras ?? {},
+        '_':
+            '&id=$id&lat=${location.latitude}&lon=${location.longitude}&timestamp=${Uri.encodeComponent(location.timestamp)}&',
+      }),
+    );
     final response = await request.close();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw HttpException('Location upload failed: ${response.statusCode}');

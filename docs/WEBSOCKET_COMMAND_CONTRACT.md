@@ -137,6 +137,37 @@ Client reconnects with exponential backoff:
 
 Reconnect reason should be logged locally and to Crashlytics.
 
+## Transport Diagnostic Events
+
+Client transport logging uses standardized event names with optional JSON context:
+
+- `command_received` (`source`, `command`, `commandId`)
+- `command_execute_start` (`source`, `command`, `commandId`)
+- `command_execute_success` (`source`, `command`, `commandId`)
+- `command_execute_failed` (`source`, `command`, `commandId`, `error`)
+- `command_ack_sent` (`source`, `commandId`)
+- `command_nack_sent` (`source`, `commandId`, `code`)
+- `command_duplicate_acked` (`source`, `command`, `commandId`)
+- `command_error` (`error`) for transport-level failures
+
+Tracking services also emit transport diagnostics, including:
+
+- `geolocation_init`, `geolocation_enabled_change`, `geolocation_motion_change`
+- `fallback_geolocation_init`, `fallback_geolocation_start`, `fallback_geolocation_stop`
+- `notification_token_fetch_failed`, `notification_token_upload_failed`
+
+All events are emitted to local diagnostics logs and mirrored to Crashlytics log lines.
+
+## Troubleshooting Flow
+
+1. Confirm `command_received` exists for a failing command and capture `commandId`.
+2. Verify a matching `command_execute_start` appears with the same `commandId`.
+3. Check for either:
+   - `command_execute_success` followed by `command_ack_sent`, or
+   - `command_execute_failed` followed by `command_nack_sent`.
+4. If no command arrives, inspect reconnect-related diagnostics and websocket auth errors first.
+5. If websocket is unavailable, verify fallback policy (`Auto` / `FCM only`) and transport selection.
+
 ## Error Codes
 
 Recommended `error.code` values:
@@ -151,3 +182,7 @@ Recommended `error.code` values:
 
 - If WebSocket is unavailable, client may use FCM fallback if enabled and available.
 - If neither WebSocket nor FCM is available, location uploads continue via HTTPS and remote commands are disabled.
+
+## Out Of Scope
+
+- `npm audit` findings are tracked as a separate dependency-maintenance stream and are not part of command transport feature fixes.

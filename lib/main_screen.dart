@@ -14,7 +14,6 @@ import 'package:flutter_background_geolocation/flutter_background_geolocation.da
     as bg;
 
 import 'l10n/app_localizations.dart';
-import 'status_screen.dart';
 import 'settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -260,15 +259,6 @@ class _MainScreenState extends State<MainScreen> {
                     }
                   },
                   child: Text(AppLocalizations.of(context)!.locationButton),
-                ),
-                FilledButton.tonal(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const StatusScreen()),
-                    );
-                  },
-                  child: Text(AppLocalizations.of(context)!.statusButton),
                 ),
               ],
             ),

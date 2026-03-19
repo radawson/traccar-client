@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:traccar_client/password_service.dart';
 import 'package:traccar_client/tracking_services.dart';
+import 'package:traccar_client/transport_log_service.dart';
 
 import 'preferences.dart';
 
@@ -291,17 +290,18 @@ class PushService {
   static void _recordError(Object error) {
     final message = error.toString();
     diagnostics.value = diagnostics.value.copyWith(lastError: message);
-    try {
-      FirebaseCrashlytics.instance.log('command_error:$message');
-    } catch (_) {}
+    TransportLogService.error('command_error', error);
   }
 
   static Future<void> _executeCommand(RemoteCommand command) async {
-    try {
-      FirebaseCrashlytics.instance.log(
-        'command_${command.source}:${command.command}',
-      );
-    } catch (_) {}
+    TransportLogService.event(
+      'command_execute_start',
+      context: {
+        'source': command.source,
+        'command': command.command,
+        'commandId': command.commandId,
+      },
+    );
     diagnostics.value = diagnostics.value.copyWith(
       lastCommandAt: DateTime.now(),
     );
@@ -313,20 +313,64 @@ class PushService {
             extras: {'remote': true, ...command.payload},
           );
         } catch (error) {
-          developer.log('Failed to get position', error: error);
+          TransportLogService.error(
+            'command_position_single_failed',
+            error,
+            context: {'source': command.source, 'commandId': command.commandId},
+          );
           rethrow;
         }
+        TransportLogService.event(
+          'command_execute_success',
+          context: {
+            'source': command.source,
+            'command': command.command,
+            'commandId': command.commandId,
+          },
+        );
         return;
       case 'positionPeriodic':
         await TrackingServices.instance.start();
+        TransportLogService.event(
+          'command_execute_success',
+          context: {
+            'source': command.source,
+            'command': command.command,
+            'commandId': command.commandId,
+          },
+        );
         return;
       case 'positionStop':
         await TrackingServices.instance.stop();
+        TransportLogService.event(
+          'command_execute_success',
+          context: {
+            'source': command.source,
+            'command': command.command,
+            'commandId': command.commandId,
+          },
+        );
         return;
       case 'factoryReset':
         await PasswordService.setPassword('');
+        TransportLogService.event(
+          'command_execute_success',
+          context: {
+            'source': command.source,
+            'command': command.command,
+            'commandId': command.commandId,
+          },
+        );
         return;
       default:
+        TransportLogService.event(
+          'command_execute_unknown',
+          context: {
+            'source': command.source,
+            'command': command.command,
+            'commandId': command.commandId,
+          },
+        );
         throw UnsupportedError('Unknown command: ${command.command}');
     }
   }
@@ -346,7 +390,7 @@ class PushService {
       );
       await request.close();
     } catch (error) {
-      developer.log('Failed to upload token', error: error);
+      TransportLogService.error('notification_token_upload_failed', error);
       _recordError(error);
     }
   }
@@ -455,7 +499,7 @@ class FcmCommandTransport implements CommandTransport {
     try {
       PushService._uploadToken(await FirebaseMessaging.instance.getToken());
     } catch (error) {
-      developer.log('Failed to get notification token', error: error);
+      TransportLogService.error('notification_token_fetch_failed', error);
       PushService._recordError(error);
     }
     PushService._setTransport(
@@ -468,6 +512,14 @@ class FcmCommandTransport implements CommandTransport {
   Future<void> _onMessage(RemoteMessage message) async {
     final command = message.data['command']?.toString();
     if (command == null || command.isEmpty || _handler == null) return;
+    TransportLogService.event(
+      'command_received',
+      context: {
+        'source': 'fcm',
+        'command': command,
+        'commandId': message.messageId,
+      },
+    );
     try {
       await _handler!(
         RemoteCommand(
@@ -477,6 +529,15 @@ class FcmCommandTransport implements CommandTransport {
         ),
       );
     } catch (error) {
+      TransportLogService.error(
+        'command_receive_failed',
+        error,
+        context: {
+          'source': 'fcm',
+          'command': command,
+          'commandId': message.messageId,
+        },
+      );
       PushService._recordError(error);
     }
   }
@@ -608,7 +669,23 @@ class WebSocketCommandTransport implements CommandTransport {
     final command = frame['command']?.toString();
     if (command == null || command.isEmpty || _handler == null) return;
     final commandId = frame['commandId']?.toString();
+    TransportLogService.event(
+      'command_received',
+      context: {
+        'source': 'websocket',
+        'command': command,
+        'commandId': commandId,
+      },
+    );
     if (commandId != null && _alreadySeenCommand(commandId)) {
+      TransportLogService.event(
+        'command_duplicate_acked',
+        context: {
+          'source': 'websocket',
+          'command': command,
+          'commandId': commandId,
+        },
+      );
       _sendAck(commandId);
       return;
     }
@@ -631,6 +708,15 @@ class WebSocketCommandTransport implements CommandTransport {
         _sendAck(commandId);
       }
     } catch (error) {
+      TransportLogService.error(
+        'command_execute_failed',
+        error,
+        context: {
+          'source': 'websocket',
+          'command': command,
+          'commandId': commandId,
+        },
+      );
       PushService._recordError(error);
       if (commandId != null) {
         _sendNack(commandId, 'execution_failed', error.toString());
@@ -652,6 +738,10 @@ class WebSocketCommandTransport implements CommandTransport {
   }
 
   void _sendAck(String commandId) {
+    TransportLogService.event(
+      'command_ack_sent',
+      context: {'source': 'websocket', 'commandId': commandId},
+    );
     _sendJson({
       'type': 'ack',
       'protocol': 'traccar-client-command-v1',
@@ -662,6 +752,10 @@ class WebSocketCommandTransport implements CommandTransport {
   }
 
   void _sendNack(String commandId, String code, String message) {
+    TransportLogService.event(
+      'command_nack_sent',
+      context: {'source': 'websocket', 'commandId': commandId, 'code': code},
+    );
     _sendJson({
       'type': 'nack',
       'protocol': 'traccar-client-command-v1',
@@ -732,7 +826,10 @@ Future<void> pushServiceBackgroundHandler(RemoteMessage message) async {
   if (!PushService._isFcmAllowedForMode(mode, useFcmFallback)) return;
   final command = message.data['command']?.toString();
   if (command == null || command.isEmpty) return;
-  FirebaseCrashlytics.instance.log('push_background_handler');
+  TransportLogService.event(
+    'push_background_handler',
+    context: {'command': command, 'commandId': message.messageId},
+  );
   await PushService._executeCommand(
     RemoteCommand(
       command: command,
