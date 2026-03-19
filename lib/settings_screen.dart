@@ -337,6 +337,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           if (advanced)
             SwitchListTile(
+              title: const Text('Show connection indicator'),
+              subtitle: const Text(
+                'Display blue/green/yellow/red command transport status on main screen',
+              ),
+              value:
+                  Preferences.instance.getBool(
+                    Preferences.showConnectionIndicator,
+                  ) ??
+                  true,
+              onChanged: (value) async {
+                await Preferences.instance.setBool(
+                  Preferences.showConnectionIndicator,
+                  value,
+                );
+                setState(() {});
+              },
+            ),
+          if (advanced)
+            SwitchListTile(
               title: const Text('Enable WebSocket transport'),
               value:
                   Preferences.instance.getBool(Preferences.websocketEnabled) ??

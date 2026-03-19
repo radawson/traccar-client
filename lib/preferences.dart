@@ -27,6 +27,7 @@ class Preferences {
   static const String useFcmFallback = 'use_fcm_fallback';
   static const String commandTransportMode = 'command_transport_mode';
   static const String websocketEnabled = 'websocket_enabled';
+  static const String showConnectionIndicator = 'show_connection_indicator';
 
   static const String commandTransportAuto = 'auto';
   static const String commandTransportWebsocketOnly = 'websocketOnly';
@@ -71,6 +72,7 @@ class Preferences {
           useFcmFallback,
           commandTransportMode,
           websocketEnabled,
+          showConnectionIndicator,
           lastTimestamp,
           lastLatitude,
           lastLongitude,
@@ -90,12 +92,16 @@ class Preferences {
       await instance.setBool(useFcmFallback, true);
       await instance.setString(commandTransportMode, commandTransportAuto);
       await instance.setBool(websocketEnabled, true);
+      await instance.setBool(showConnectionIndicator, true);
     }
     if (instance.getString(commandTransportMode) == null) {
       await instance.setString(commandTransportMode, commandTransportAuto);
     }
     if (instance.getBool(websocketEnabled) == null) {
       await instance.setBool(websocketEnabled, true);
+    }
+    if (instance.getBool(showConnectionIndicator) == null) {
+      await instance.setBool(showConnectionIndicator, true);
     }
   }
 

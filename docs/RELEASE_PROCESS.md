@@ -81,6 +81,7 @@ Configure in app settings (Advanced):
 - `Command transport mode` (slider: `Auto`, `WebSocket only`, `FCM only`, `Disabled`)
 - `Use FCM fallback` (enabled by default)
 - `Test WebSocket connection`
+- `Show connection indicator` (main screen status bubble)
 
 Behavior:
 
@@ -91,6 +92,14 @@ Behavior:
 - `FCM only`: commands run only over Firebase messaging.
 - `Disabled`: remote command transport is disabled.
 - If no command transport is available, location uploads continue via HTTPS.
+
+Connection indicator semantics (main screen):
+
+- `Blue`: `Private (WebSocket)` active.
+- `Green`: `Connected (Firebase)` active.
+- `Yellow`: degraded/reconnecting/semi-connected state.
+- `Red`: no usable command transport.
+- Color semantics are the same on Android and iOS, even though fallback paths differ.
 
 Protocol details are documented in `docs/WEBSOCKET_COMMAND_CONTRACT.md`.
 

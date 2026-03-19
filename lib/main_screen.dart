@@ -29,6 +29,74 @@ class _MainScreenState extends State<MainScreen> {
   bool trackingEnabled = false;
   bool? isMoving;
 
+  ({Color color, String label, String details}) _connectionIndicatorState(
+    CommandDiagnostics diagnostics,
+    String? transportInfo,
+  ) {
+    final reconnectReason = diagnostics.lastReconnectReason ?? '';
+    final hasError = (diagnostics.lastError ?? '').isNotEmpty;
+    final isRecovering =
+        reconnectReason.startsWith('reconnect_') ||
+        reconnectReason.startsWith('auth_error') ||
+        reconnectReason == 'socket_error' ||
+        reconnectReason == 'socket_closed' ||
+        reconnectReason == 'connect_failed';
+
+    if (diagnostics.activeTransport == CommandTransportType.none) {
+      return (
+        color: Colors.red,
+        label: 'Offline',
+        details:
+            transportInfo ??
+            'No command transport is currently available in this mode.',
+      );
+    }
+
+    if (diagnostics.activeTransport == CommandTransportType.websocket) {
+      if (diagnostics.websocketConnected && !hasError && !isRecovering) {
+        return (
+          color: Colors.blue,
+          label: 'Private (WebSocket)',
+          details:
+              transportInfo ??
+              'WebSocket command transport is active with privacy path.',
+        );
+      }
+      return (
+        color: Colors.yellow,
+        label: 'Degraded',
+        details:
+            transportInfo ??
+            'WebSocket transport is active but currently reconnecting or degraded.',
+      );
+    }
+
+    if (diagnostics.activeTransport == CommandTransportType.fcm) {
+      if (diagnostics.fcmAvailable && !hasError) {
+        return (
+          color: Colors.green,
+          label: 'Connected (Firebase)',
+          details: transportInfo ?? 'Firebase command transport is active.',
+        );
+      }
+      return (
+        color: Colors.yellow,
+        label: 'Degraded',
+        details:
+            transportInfo ??
+            'Firebase transport is selected but reports limited availability.',
+      );
+    }
+
+    return (
+      color: Colors.yellow,
+      label: 'Degraded',
+      details:
+          transportInfo ??
+          'Transport is in a transitional or recovering state.',
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -152,68 +220,103 @@ class _MainScreenState extends State<MainScreen> {
                 final reconnectReason = diagnostics.lastReconnectReason ?? '-';
                 final lastError = diagnostics.lastError ?? '-';
                 final transportInfo = PushService.availabilityMessage;
+                final indicator = _connectionIndicatorState(
+                  diagnostics,
+                  transportInfo,
+                );
+                final showIndicator =
+                    Preferences.instance.getBool(
+                      Preferences.showConnectionIndicator,
+                    ) ??
+                    true;
                 return Column(
                   children: [
+                    if (showIndicator)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Connection'),
+                        subtitle: Text(indicator.details),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              size: 12,
+                              color: indicator.color,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(indicator.label),
+                          ],
+                        ),
+                      ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Tracking backend'),
                       subtitle: Text(TrackingServices.activeTrackingBackend),
                     ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Configured mode'),
-                      subtitle: Text(PushService.configuredModeName),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('Connection details'),
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Configured mode'),
+                          subtitle: Text(PushService.configuredModeName),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Command transport'),
+                          subtitle: Text(
+                            TrackingServices.activeCommandTransport,
+                          ),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('WebSocket'),
+                          subtitle: Text(
+                            diagnostics.websocketEnabled
+                                ? (diagnostics.websocketConfigured
+                                    ? (diagnostics.websocketConnected
+                                        ? 'connected'
+                                        : 'disconnected')
+                                    : 'not configured')
+                                : 'disabled',
+                          ),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('FCM availability'),
+                          subtitle: Text(
+                            diagnostics.fcmEnabled
+                                ? (diagnostics.fcmAvailable
+                                    ? 'available'
+                                    : 'unavailable')
+                                : 'disabled',
+                          ),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Last command'),
+                          subtitle: Text(lastCommand),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Reconnect reason'),
+                          subtitle: Text(reconnectReason),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Last command error'),
+                          subtitle: Text(lastError),
+                        ),
+                        if (transportInfo != null)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Transport notice'),
+                            subtitle: Text(transportInfo),
+                          ),
+                      ],
                     ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Command transport'),
-                      subtitle: Text(TrackingServices.activeCommandTransport),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('WebSocket'),
-                      subtitle: Text(
-                        diagnostics.websocketEnabled
-                            ? (diagnostics.websocketConfigured
-                                ? (diagnostics.websocketConnected
-                                    ? 'connected'
-                                    : 'disconnected')
-                                : 'not configured')
-                            : 'disabled',
-                      ),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('FCM availability'),
-                      subtitle: Text(
-                        diagnostics.fcmEnabled
-                            ? (diagnostics.fcmAvailable
-                                ? 'available'
-                                : 'unavailable')
-                            : 'disabled',
-                      ),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Last command'),
-                      subtitle: Text(lastCommand),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Reconnect reason'),
-                      subtitle: Text(reconnectReason),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Last command error'),
-                      subtitle: Text(lastError),
-                    ),
-                    if (transportInfo != null)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Transport notice'),
-                        subtitle: Text(transportInfo),
-                      ),
                   ],
                 );
               },
